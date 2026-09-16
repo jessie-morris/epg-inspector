@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EPG Inspector</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#04081c;
+    --surface:#0c1638;
+    --surface-2:#14276b;
+    --row-alt:#0a1530;
+    --accent:#ffcc00;
+    --accent-glow:rgba(255,204,0,.4);
+    --on-accent:#04081c;
+    --warn:#ff5c5c;
+    --warn-bg:#3a0d10;
+    --gap:#7d93e8;
+    --text:#ffffff;
+    --text-dim:#a9bbf0;
+    --border:#5773e0;
+    --mono-bg:#081030;
+    --prog-fill:#1c3182;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+    padding-inline:20px;
+    padding-block:28px;
+  }
+  h1,h2,h3{text-wrap:balance; margin:0;}
+  .display{
+    font-family:"Barlow Condensed",system-ui,sans-serif;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;}
+
+  .wrap{max-width:1430px; margin-inline:auto; display:flex; flex-direction:column; gap:20px;}
+
+  .masthead{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap;}
+  .masthead h1{font-size:clamp(28px,4vw,40px); line-height:1;}
+  .masthead .tag{color:var(--text-dim); font-size:14px; max-width:46ch;}
+
+  .panel{
+    background:var(--surface);
+    border:2px solid var(--border);
+    border-radius:3px;
+    padding:18px 20px;
+  }
+
+  .input-row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;}
+  .input-row input[type=text]{
+    flex:1 1 320px;
+    min-width:0;
+    background:var(--mono-bg);
+    border:2px solid var(--border);
+    color:var(--text);
+    border-radius:3px;
+    padding:8px 10px;
+    font-family:"IBM Plex Mono",monospace;
+    font-size:13px;
+  }
+  button{
+    font-family:"Barlow Condensed",sans-serif;
+    font-size:14px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.03em;
+    border-radius:3px;
+    border:2px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    padding:8px 16px;
+    cursor:pointer;
+  }
+  button.primary{background:var(--accent); color:var(--on-accent); border-color:var(--accent);}
+  button:hover{filter:brightness(1.15);}
+  button:focus-visible, input:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--accent); outline-offset:1px;
+  }
+
+  #xmltvInput{
+    width:100%;
+    height:110px;
+    resize:vertical;
+    background:var(--mono-bg);
+    border:2px solid var(--border);
+    color:var(--text);
+    border-radius:3px;
+    padding:10px 12px;
+    font-family:"IBM Plex Mono",monospace;
+    font-size:12px;
+    line-height:1.5;
+  }
+  .hint{font-size:13px; line-height:1.5; color:var(--text-dim); margin-top:10px;}
+  .fetch-msg{font-size:13px; margin-top:8px; font-family:"IBM Plex Mono",monospace;}
+  .fetch-msg.err{color:var(--warn);}
+  .fetch-msg.ok{color:var(--accent);}
+
+  /* guide grid */
+  .guide{
+    background:var(--surface);
+    border:2px solid var(--border);
+    border-radius:3px;
+    overflow:auto;
+    max-width:100%;
+    position:relative;
+  }
+  .guide-inner{
+    position:relative;
+    display:grid;
+    grid-template-columns:184px 6240px;
+    width:6424px;
+  }
+  .corner{
+    position:sticky; top:0; left:0; z-index:3;
+    background:var(--surface); border-bottom:1px solid var(--border); border-right:1px solid var(--border);
+    display:flex; align-items:flex-end; padding:8px 10px;
+  }
+  .corner span{font-size:11px; color:var(--text-dim); letter-spacing:.05em;}
+  .timeline{
+    position:sticky; top:0; z-index:2;
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    height:38px;
+  }
+  .tick{
+    position:absolute; top:0; bottom:0; border-left:1px solid var(--border);
+    padding-left:6px; padding-top:8px;
+    font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--text-dim);
+    white-space:nowrap;
+  }
+  .chan-col{position:sticky; left:0; z-index:1; background:var(--surface);}
+  .chan-tile{
+    height:76px;
+    border-bottom:1px solid var(--border);
+    border-right:1px solid var(--border);
+    display:flex; align-items:center; gap:10px;
+    padding:0 10px;
+  }
+  .chan-tile:nth-child(even){background:var(--row-alt);}
+  .chan-num{
+    font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:24px;
+    background:var(--accent); color:var(--on-accent);
+    min-width:36px; text-align:center; border-radius:2px; padding:3px 4px;
+    line-height:1.3;
+  }
+  .chan-logo{
+    width:34px; height:34px; object-fit:contain; flex-shrink:0;
+    background:var(--bg); border-radius:2px; border:2px solid var(--border);
+  }
+  .chan-name{font-size:13.5px; line-height:1.3; min-width:0;}
+
+  .track-col{position:relative;}
+  .track{
+    position:relative;
+    height:76px;
+    border-bottom:1px solid var(--border);
+  }
+  .track:nth-child(even){background:var(--row-alt);}
+
+  .prog{
+    position:absolute; top:4px; bottom:4px;
+    background:var(--prog-fill);
+    border:2px solid var(--border);
+    border-left:5px solid var(--accent);
+    border-radius:2px;
+    padding:7px 10px;
+    overflow:hidden;
+    cursor:pointer;
+    display:flex; flex-direction:column; justify-content:center; gap:3px;
+  }
+  .prog:hover{
+    border-color:var(--text);
+    border-left-color:var(--accent);
+  }
+  .prog.selected{
+    background:var(--accent);
+    border-color:var(--accent);
+  }
+  .prog.selected .t{color:var(--on-accent);}
+  .prog.selected .time{color:var(--on-accent); opacity:.75;}
+  .prog .t{
+    font-size:13.5px; font-weight:700; line-height:1.3;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+    overflow:hidden;
+  }
+  .prog .time{
+    font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.03em;
+    color:var(--text-dim); white-space:nowrap; text-transform:uppercase;
+  }
+
+  .prog.noinfo{
+    border-color:var(--warn);
+    border-left-color:var(--warn);
+    background:repeating-linear-gradient(45deg, var(--warn-bg), var(--warn-bg) 6px, var(--prog-fill) 6px, var(--prog-fill) 12px);
+  }
+  .prog.noinfo .t{color:var(--warn);}
+  .prog.noinfo:hover{border-color:var(--warn); filter:brightness(1.2);}
+  .prog.noinfo.selected{background:var(--warn); border-color:var(--warn);}
+  .prog.noinfo.selected .t{color:var(--on-accent);}
+
+  .gapblock{
+    position:absolute; top:4px; bottom:4px;
+    border:2px dashed var(--gap);
+    border-radius:2px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .gapblock span{font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--gap); text-transform:uppercase; letter-spacing:.04em;}
+
+  .nowline{
+    position:absolute; top:0; bottom:0; width:2px; background:var(--accent);
+    box-shadow:0 0 8px var(--accent-glow); z-index:1;
+  }
+  .nowline .pill{
+    position:sticky; top:38px;
+    transform:translateX(-50%);
+    background:var(--accent); color:var(--on-accent);
+    font-family:"IBM Plex Mono",monospace; font-size:10px; font-weight:700;
+    padding:2px 6px; border-radius:2px; white-space:nowrap;
+  }
+
+  /* anomaly readout */
+  .readout h3{font-size:14px; letter-spacing:.05em; color:var(--text-dim); margin-bottom:12px;}
+  .anom-list{display:flex; flex-direction:column; gap:8px; font-family:"IBM Plex Mono",monospace; font-size:13px;}
+  .anom{display:flex; gap:10px; align-items:baseline; padding:9px 12px; border-radius:3px; background:var(--surface-2); border:2px solid var(--border);}
+  .anom .badge{
+    font-family:"Barlow Condensed",sans-serif; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+    font-size:11.5px; padding:2px 8px; border-radius:2px; flex-shrink:0;
+  }
+  .anom.noinfo .badge{background:var(--warn-bg); color:var(--warn);}
+  .anom.gap .badge{background:var(--surface); color:var(--gap); border:2px solid var(--border);}
+  .anom-empty{color:var(--text-dim); font-family:"IBM Plex Mono",monospace; font-size:13px;}
+
+  /* detail modal */
+  .modal-backdrop{
+    display:none;
+    position:fixed; inset:0; z-index:20;
+    background:rgba(4,10,20,.55);
+    align-items:center; justify-content:center;
+    padding:20px;
+  }
+  .modal-backdrop.open{display:flex;}
+  .modal-card{
+    background:var(--surface);
+    border:2px solid var(--accent);
+    border-radius:4px;
+    max-width:480px; width:100%;
+    max-height:min(560px,86vh);
+    overflow-y:auto;
+    padding:22px 24px;
+    box-shadow:0 20px 50px rgba(0,0,0,.5);
+    position:relative;
+  }
+  .modal-close{
+    position:absolute; top:14px; right:14px;
+    width:30px; height:30px; border-radius:2px;
+    background:var(--surface-2); border:2px solid var(--border); color:var(--text-dim);
+    font-size:16px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    padding:0;
+  }
+  .modal-close:hover{color:var(--text);}
+  .modal-eyebrow{
+    font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--text-dim);
+    margin-bottom:10px; padding-right:34px; line-height:1.5;
+  }
+  .modal-title{font-size:22px; font-weight:700; line-height:1.3; margin-bottom:6px; padding-right:34px; text-wrap:balance;}
+  .modal-title.noinfo{color:var(--warn);}
+  .modal-episode{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+  .modal-episode .ep-badge{
+    font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:13px; letter-spacing:.03em;
+    background:var(--accent); color:var(--on-accent); border-radius:2px; padding:2px 8px;
+    white-space:nowrap;
+  }
+  .modal-episode .ep-title{font-size:15px; font-weight:600; color:var(--text);}
+  .modal-time{font-family:"IBM Plex Mono",monospace; font-size:13px; color:var(--accent); margin-bottom:14px;}
+  .modal-desc{font-size:15px; line-height:1.6; color:var(--text);}
+  .modal-desc.empty{color:var(--text-dim); font-style:italic;}
+
+  footer{color:var(--text-dim); font-size:13px; text-align:center; padding-top:6px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="masthead">
+    <h1 class="display">EPG Inspector</h1>
+    <div class="tag">Paste a raw XMLTV feed and see exactly what a guide client would render — including the blank titles and schedule gaps that don't show up until something's already tuned in.</div>
+  </div>
+
+  <div class="panel">
+    <div class="input-row">
+      <input type="text" id="fetchUrl" value="http://miniboy:8409/iptv/xmltv.xml" class="mono">
+      <button id="fetchBtn">Fetch from URL</button>
+      <button id="parseBtn" class="primary">Parse &amp; render</button>
+    </div>
+    <textarea id="xmltvInput" spellcheck="false"></textarea>
+    <div class="hint">Example data is pre-loaded below. If fetching blocks or fails, run <span class="mono">curl "your-url"</span> yourself and paste the output into the box above, then hit Parse &amp; render.</div>
+    <div id="fetchMsg" class="fetch-msg"></div>
+  </div>
+
+  <div class="guide panel" style="padding:0;" id="guidePanel">
+    <div class="guide-inner" id="guideInner"></div>
+  </div>
+
+  <div class="panel readout">
+    <h3 class="display" style="font-size:14px;">Anomalies</h3>
+    <div class="anom-list" id="anomList"></div>
+  </div>
+
+  <footer>Parses XMLTV client-side in your browser. Nothing is uploaded anywhere.</footer>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal-card">
+    <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+    <div class="modal-eyebrow" id="modalMeta"></div>
+    <div class="modal-title" id="modalTitle"></div>
+    <div class="modal-episode" id="modalEpisode"></div>
+    <div class="modal-time" id="modalTime"></div>
+    <div class="modal-desc" id="modalDesc"></div>
+  </div>
+</div>
+
+<script>
+const PPM = 4; // pixels per minute
+const WINDOW_HOURS = 26; // 1h lookback + 24h+ scrollable forward from now
+
+function svgLogo(letter,bg){
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="${bg}"/><text x="32" y="45" font-size="34" font-family="Arial,sans-serif" font-weight="bold" fill="#04081c" text-anchor="middle">${letter}</text></svg>`;
+  return "data:image/svg+xml," + encodeURIComponent(svg);
+}
+
+function sampleXmltv(){
+  const now = new Date();
+  const base = new Date(now); base.setMinutes(0,0,0);
+  const fmt = d => {
+    const p = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())} +0000`;
+  };
+  const add = (d,min) => new Date(d.getTime()+min*60000);
+
+  let t0 = add(base,-60);
+  const kingOfQueens = [
+    [30,"King of Queens","Lush Life","Arthur discovers a taste for expensive wine.","S04E20"],
+    [30,"King of Queens","Der Doug","Doug obsesses over redecorating the apartment.","S04E21"],
+    [30,"King of Queens","The Bookie","Deacon starts taking bets from the guys at work.","S04E22"]
+  ];
+  let t1 = add(base,-30);
+  const simpsons = [
+    [22,"The Simpsons","Hurricane Neddy","A hurricane destroys the Flanders' home.","S08E08"],
+    [22,"The Simpsons","Special Edna","Skinner and Krabappel's romance heats up.","S14E07"],
+    [22,"The Simpsons","The Dad Who Knew Too Little","Homer hires a private eye to spy on Lisa.","S14E08"],
+  ];
+  let t2 = add(base,0);
+  const curb = [
+    [30,"Curb Your Enthusiasm","The Larry David Sandwich","Larry gets a sandwich named after him.","S06E02"],
+    [30,"Curb Your Enthusiasm","Opening Night","Larry's play opens on Broadway.","S04E10"],
+  ];
+  let t3 = add(base,-60);
+  const testOnly = [
+    [103,"Toy Story","","Woody and Buzz set aside their differences."],
+    [113,"Twister","","Storm chasers pursue tornadoes across Oklahoma."],
+  ];
+
+  function block(list, chId, start){
+    let cur = new Date(start);
+    let xml = "";
+    for (const [len,title,subtitle,desc,episode] of list){
+      const stop = add(cur,len);
+      xml += `  <programme start="${fmt(cur)}" stop="${fmt(stop)}" channel="${chId}">\n`;
+      if (title){
+        xml += `    <title>${title}</title>\n`;
+        if (subtitle) xml += `    <sub-title>${subtitle}</sub-title>\n`;
+        xml += `    <desc>${desc}</desc>\n`;
+        if (episode) xml += `    <episode-num system="onscreen">${episode}</episode-num>\n`;
+      }
+      xml += `  </programme>\n`;
+      cur = stop;
+    }
+    return xml;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="1.ersatztv"><display-name>1 King of Queens</display-name><icon src="${svgLogo('K','#ffcc00')}"/></channel>
+  <channel id="6.ersatztv"><display-name>6 The Simpsons</display-name><icon src="${svgLogo('S','#ffcc00')}"/></channel>
+  <channel id="7.ersatztv"><display-name>7 Curb Your Enthusiasm</display-name><icon src="${svgLogo('C','#ffcc00')}"/></channel>
+  <channel id="99.ersatztv"><display-name>99 TestOnly</display-name><icon src="${svgLogo('T','#ffcc00')}"/></channel>
+${block(kingOfQueens,"1.ersatztv",t0)}${block(simpsons,"6.ersatztv",t1)}${block(curb,"7.ersatztv",t2)}${block(testOnly,"99.ersatztv",t3)}</tv>`;
+}
+
+async function fixLogoSrc(img, url){
+  // Ersatz can mislabel a RIFF/WebP logo's Content-Type as audio/x-wav
+  // (WebP and WAV share the same RIFF container prefix). Fetch the raw
+  // bytes and sniff the real format ourselves instead of trusting the
+  // server's declared type.
+  try{
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP "+res.status);
+    const buf = await res.arrayBuffer();
+    const b = new Uint8Array(buf.slice(0,12));
+    let mime = null;
+    if (b[0]===0xFF && b[1]===0xD8) mime = "image/jpeg";
+    else if (b[0]===0x89 && b[1]===0x50 && b[2]===0x4E && b[3]===0x47) mime = "image/png";
+    else if (b[0]===0x52 && b[1]===0x49 && b[2]===0x46 && b[3]===0x46 && b[8]===0x57 && b[9]===0x45 && b[10]===0x42 && b[11]===0x50) mime = "image/webp";
+    else if (b[0]===0x47 && b[1]===0x49 && b[2]===0x46) mime = "image/gif";
+    if (!mime) throw new Error("unrecognized image signature");
+    img.src = URL.createObjectURL(new Blob([buf], {type: mime}));
+  } catch(e){
+    // fall back to the plain URL — still works for correctly-labeled logos,
+    // and fails the same graceful way as before for anything else broken.
+    img.src = url;
+  }
+}
+
+function parseXmltvTime(s){
+  const m = s.trim().match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?$/);
+  if (!m) return null;
+  const [, Y,Mo,D,H,Mi,Se, tz] = m;
+  let iso = `${Y}-${Mo}-${D}T${H}:${Mi}:${Se}`;
+  iso += tz ? `${tz.slice(0,3)}:${tz.slice(3)}` : 'Z';
+  const d = new Date(iso);
+  return isNaN(d) ? null : d;
+}
+
+function parseXmltv(text){
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  const errNode = doc.querySelector("parsererror");
+  if (errNode) throw new Error("XML did not parse — check it's a well-formed XMLTV document.");
+
+  const channels = [];
+  const chanOrder = [];
+  doc.querySelectorAll("channel").forEach(ch=>{
+    const id = ch.getAttribute("id");
+    if (chanOrder.includes(id)) return;
+    chanOrder.push(id);
+    const dn = ch.querySelector("display-name");
+    const icon = ch.querySelector("icon");
+    channels.push({id, name: dn ? dn.textContent.trim() : id, icon: icon ? icon.getAttribute("src") : null});
+  });
+
+  const progsByChannel = {};
+  doc.querySelectorAll("programme").forEach(p=>{
+    const chId = p.getAttribute("channel");
+    const start = parseXmltvTime(p.getAttribute("start")||"");
+    const stop = parseXmltvTime(p.getAttribute("stop")||"");
+    if (!start || !stop) return;
+    const titleEl = p.querySelector("title");
+    const subEl = p.querySelector("sub-title");
+    const descEl = p.querySelector("desc");
+    const title = titleEl ? titleEl.textContent.trim() : "";
+    const subtitle = subEl ? subEl.textContent.trim() : "";
+    const desc = descEl ? descEl.textContent.trim() : "";
+
+    let episode = "";
+    const epNums = p.querySelectorAll("episode-num");
+    epNums.forEach(el=>{
+      if (el.getAttribute("system") === "onscreen") episode = el.textContent.trim();
+    });
+    if (!episode){
+      epNums.forEach(el=>{
+        if (el.getAttribute("system") === "xmltv_ns"){
+          const parts = el.textContent.trim().split(".");
+          const s = parseInt(parts[0], 10), e = parseInt(parts[1], 10);
+          if (!isNaN(s) && !isNaN(e)) episode = `S${String(s+1).padStart(2,'0')}E${String(e+1).padStart(2,'0')}`;
+        }
+      });
+    }
+
+    (progsByChannel[chId] = progsByChannel[chId]||[]).push({start,stop,title,subtitle,episode,desc,
+      startRaw:p.getAttribute("start"), stopRaw:p.getAttribute("stop")});
+  });
+  Object.values(progsByChannel).forEach(list=>list.sort((a,b)=>a.start-b.start));
+
+  return {channels, progsByChannel};
+}
+
+function fmtTime(d){
+  return d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+}
+function fmtClock(d){
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12:false});
+}
+
+function render({channels, progsByChannel}){
+  const guideInner = document.getElementById("guideInner");
+  const anomList = document.getElementById("anomList");
+  guideInner.innerHTML = "";
+  anomList.innerHTML = "";
+
+  const now = new Date();
+  let winStart = new Date(now); winStart.setMinutes(0,0,0); winStart = new Date(winStart.getTime()-60*60000);
+  const totalMin = WINDOW_HOURS*60;
+  const trackWidth = totalMin*PPM;
+
+  const px = min => Math.max(0, Math.min(trackWidth, min*PPM));
+
+  // corner + timeline
+  const corner = document.createElement("div");
+  corner.className = "corner";
+  corner.innerHTML = `<span>CHANNEL</span>`;
+  guideInner.appendChild(corner);
+
+  const timeline = document.createElement("div");
+  timeline.className = "timeline";
+  timeline.style.width = trackWidth+"px";
+  for (let m=0; m<=totalMin; m+=30){
+    const t = new Date(winStart.getTime()+m*60000);
+    const tick = document.createElement("div");
+    tick.className = "tick";
+    tick.style.left = px(m)+"px";
+    tick.textContent = t.getMinutes()===0 ? fmtTime(t) : "";
+    timeline.appendChild(tick);
+  }
+  guideInner.appendChild(timeline);
+
+  // channel column
+  const chanCol = document.createElement("div");
+  chanCol.className = "chan-col";
+  channels.forEach(ch=>{
+    const num = (ch.name.match(/^\d+/)||[""])[0];
+    const nm = ch.name.replace(/^\d+\s*/,"");
+    const tile = document.createElement("div");
+    tile.className = "chan-tile";
+    tile.innerHTML = `<div class="chan-num">${num||"–"}</div><div class="chan-name">${nm||ch.name}</div>`;
+    if (ch.icon){
+      const img = document.createElement("img");
+      img.className = "chan-logo";
+      img.alt = "";
+      img.addEventListener("error", ()=>img.remove());
+      tile.insertBefore(img, tile.querySelector(".chan-name"));
+      fixLogoSrc(img, ch.icon);
+    }
+    chanCol.appendChild(tile);
+  });
+  guideInner.appendChild(chanCol);
+
+  // track column
+  const trackCol = document.createElement("div");
+  trackCol.className = "track-col";
+  trackCol.style.width = trackWidth+"px";
+
+  const anomalies = [];
+
+  channels.forEach(ch=>{
+    const track = document.createElement("div");
+    track.className = "track";
+    const progs = (progsByChannel[ch.id]||[]);
+
+    let cursorMin = 0;
+    progs.forEach(p=>{
+      const startMin = (p.start-winStart)/60000;
+      const stopMin = (p.stop-winStart)/60000;
+      if (stopMin < 0 || startMin > totalMin) return;
+
+      if (startMin > cursorMin+1){
+        const gap = document.createElement("div");
+        gap.className = "gapblock";
+        gap.style.left = px(cursorMin)+"px";
+        gap.style.width = (px(startMin)-px(cursorMin))+"px";
+        gap.innerHTML = `<span>gap</span>`;
+        track.appendChild(gap);
+        anomalies.push({type:"gap", chan:ch.name, detail:`${fmtClock(new Date(winStart.getTime()+cursorMin*60000))}–${fmtClock(p.start)}: no programme data`});
+      }
+      cursorMin = Math.max(cursorMin, stopMin);
+
+      const block = document.createElement("div");
+      const noInfo = !p.title;
+      block.className = "prog" + (noInfo ? " noinfo" : "");
+      block.style.left = px(startMin)+"px";
+      block.style.width = Math.max(24, px(stopMin)-px(startMin))+"px";
+      const durMin = Math.round((p.stop-p.start)/60000);
+      const blockTitle = noInfo ? "NO INFORMATION" : (p.subtitle ? `${p.title} — ${p.subtitle}` : p.title);
+      block.innerHTML = `<div class="t">${blockTitle}</div><div class="time">${durMin} min</div>`;
+      block.addEventListener("click", ()=>{
+        document.querySelectorAll(".prog.selected").forEach(el=>el.classList.remove("selected"));
+        block.classList.add("selected");
+        showDetail(ch,p,noInfo);
+      });
+      track.appendChild(block);
+
+      if (noInfo){
+        anomalies.push({type:"noinfo", chan:ch.name, detail:`${fmtClock(p.start)}–${fmtClock(p.stop)}: programme exists but title is empty (raw start="${p.startRaw}")`});
+      }
+    });
+
+    trackCol.appendChild(track);
+  });
+
+  guideInner.appendChild(trackCol);
+
+  // now line — placed over track col, offset by chan col width via left calc using grid
+  const nowWrap = document.createElement("div");
+  nowWrap.style.position="absolute";
+  nowWrap.style.top="38px";
+  nowWrap.style.bottom="0";
+  nowWrap.style.left = (184+px((now-winStart)/60000))+"px";
+  nowWrap.style.width="0";
+  nowWrap.style.pointerEvents="none";
+  const nowline = document.createElement("div");
+  nowline.className="nowline";
+  nowline.style.left="0";
+  const pill = document.createElement("div");
+  pill.className="pill";
+  pill.textContent = "NOW " + fmtClock(now);
+  nowline.appendChild(pill);
+  nowWrap.appendChild(nowline);
+  guideInner.appendChild(nowWrap);
+
+  // anomaly readout
+  if (anomalies.length===0){
+    anomList.innerHTML = `<div class="anom-empty">No blank titles or schedule gaps found in the parsed window.</div>`;
+  } else {
+    anomalies.forEach(a=>{
+      const row = document.createElement("div");
+      row.className = "anom " + a.type;
+      row.innerHTML = `<span class="badge">${a.type==="noinfo"?"no info":"gap"}</span><span>${a.chan} — ${a.detail}</span>`;
+      anomList.appendChild(row);
+    });
+  }
+
+  // scroll so "now" is visible near the left
+  requestAnimationFrame(()=>{
+    document.getElementById("guidePanel").scrollLeft = Math.max(0, px((now-winStart)/60000) - 100);
+  });
+}
+
+function showDetail(ch,p,noInfo){
+  document.getElementById("modalMeta").textContent =
+    `${ch.name}  ·  channel="${ch.id}"  ·  start="${p.startRaw}"  stop="${p.stopRaw}"`;
+
+  const titleEl = document.getElementById("modalTitle");
+  titleEl.textContent = noInfo ? "No information" : p.title;
+  titleEl.classList.toggle("noinfo", noInfo);
+
+  const epEl = document.getElementById("modalEpisode");
+  if (p.episode || p.subtitle){
+    epEl.innerHTML = (p.episode ? `<span class="ep-badge">${p.episode}</span>` : "")
+      + (p.subtitle ? `<span class="ep-title">${p.subtitle}</span>` : "");
+    epEl.style.display = "flex";
+  } else {
+    epEl.style.display = "none";
+    epEl.innerHTML = "";
+  }
+
+  document.getElementById("modalTime").textContent = `${fmtClock(p.start)} – ${fmtClock(p.stop)}`;
+
+  const descEl = document.getElementById("modalDesc");
+  if (p.desc){
+    descEl.textContent = p.desc;
+    descEl.classList.remove("empty");
+  } else {
+    descEl.textContent = noInfo
+      ? "This programme slot has start/stop times in the feed but no <title> or <desc> — this is exactly the shape of a guide showing “no information.”"
+      : "(no <desc> element in the feed)";
+    descEl.classList.add("empty");
+  }
+
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+
+function closeModal(){
+  document.getElementById("modalBackdrop").classList.remove("open");
+}
+document.getElementById("modalClose").addEventListener("click", closeModal);
+document.getElementById("modalBackdrop").addEventListener("click", (e)=>{
+  if (e.target.id === "modalBackdrop") closeModal();
+});
+document.addEventListener("keydown", (e)=>{
+  if (e.key === "Escape") closeModal();
+});
+
+function doParse(){
+  const text = document.getElementById("xmltvInput").value;
+  try{
+    const data = parseXmltv(text);
+    render(data);
+  } catch(e){
+    const anomList = document.getElementById("anomList");
+    anomList.innerHTML = `<div class="anom noinfo"><span class="badge">error</span><span>${e.message}</span></div>`;
+  }
+}
+
+document.getElementById("parseBtn").addEventListener("click", doParse);
+
+document.getElementById("fetchBtn").addEventListener("click", async ()=>{
+  const url = document.getElementById("fetchUrl").value.trim();
+  const msg = document.getElementById("fetchMsg");
+  msg.textContent = "Fetching…";
+  msg.className = "fetch-msg";
+  try{
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP "+res.status);
+    const text = await res.text();
+    document.getElementById("xmltvInput").value = text;
+    msg.textContent = "Loaded " + text.length + " bytes from " + url;
+    msg.className = "fetch-msg ok";
+    doParse();
+  } catch(e){
+    msg.textContent = "Fetch blocked or failed (" + e.message + "). Try running curl \"" + url + "\" yourself and paste the result into the box above instead.";
+    msg.className = "fetch-msg err";
+  }
+});
+
+// boot with sample data
+document.getElementById("xmltvInput").value = sampleXmltv();
+doParse();
+</script>
+</body>
+</html>
